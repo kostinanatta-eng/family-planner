@@ -402,32 +402,34 @@ function renderToday(){
 }
 
 // --- НАСТРОЙКИ
-$('sMe').oninput=e=>{S.me=e.target.value;save();head()};
-$('sKid').oninput=e=>{S.kid=e.target.value;save();head()};
+$('sMe').oninput=e=>{S.me=e.target.value;save();renderHeader()};
+$('sKid').oninput=e=>{S.kid=e.target.value;save();renderHeader()};
 function renderLimits(){$('limits').innerHTML=EXP_CATS.map(c=>`<div class="row" style="margin-bottom:6px"><span class="grow small">${c}</span><input type="number" data-lim="${c}" value="${S.limits[c]||''}" placeholder="без лимита" style="width:120px"></div>`).join('')}
 $('limits').addEventListener('input',e=>{const c=e.target.dataset.lim;if(c){S.limits[c]=+e.target.value||0;save()}});
 $('exp').onclick=()=>{const b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='planer-kopiya-'+TODAY+'.json';a.click()};
-$('imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{S={...blank(),...JSON.parse(t)};save();head();render();alert('Копия загружена')}catch(er){alert('Файл не подошёл')}})};
+$('imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{S={...blank(),...JSON.parse(t)};save();renderHeader();render();alert('Копия загружена')}catch(er){alert('Файл не подошёл')}})};
 $('theme').onchange=e=>{S.theme=e.target.value;save();applyTheme()};
 function applyTheme(){const t=S.theme||(TG?TG.colorScheme:'');if(t)document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;$('theme').value=S.theme||''}
 // В Telegram внешние ссылки открываем через Telegram, а не внутри мини-приложения
 document.addEventListener('click',e=>{const a=e.target.closest('a[target=_blank]');if(a&&TG){e.preventDefault();TG.openLink(a.href)}});
 
-function head(){const h=new Date().getHours();const g=h<12?'Доброе утро':h<18?'Добрый день':'Добрый вечер';
+function renderHeader(){const h=new Date().getHours();const g=h<12?'Доброе утро':h<18?'Добрый день':'Добрый вечер';
   $('hello').textContent=g+(S.me?', '+S.me:'')+'!';
   $('todayLabel').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
 function render(){renderToday();renderTasks();renderBudget();renderSchool();renderMoscow()}
 
 // старт
 $('tDate').value=TODAY;$('tViewDate').value=TODAY;$('bDate').value=TODAY;$('bMonth').value=TODAY.slice(0,7);
-function boot(){$('sMe').value=S.me;$('sKid').value=S.kid;fillCats();renderLimits();applyTheme();head();render()}
+function boot(){$('sMe').value=S.me;$('sKid').value=S.kid;fillCats();renderLimits();applyTheme();renderHeader();render()}
 boot();
 if(TG){TG.ready();TG.expand()}
 if(REMOTE){syncLabel('· загружаю…');
-  api('load').then(j=>{if(j.data){S={...blank(),...j.data};try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}boot()}
+  api('load').then(j=>{
+    if(j.data){S={...blank(),...j.data};try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+      try{boot()}catch(e){console.error(e)}} // ошибка отрисовки не должна отключать сохранение
     else save(); // сервер пустой — отправляем то, что есть
-    syncLabel('· ☁ синхронизировано')})
-  .catch(e=>{online=false;syncLabel('· ⚠ нет связи с сервером: '+e.message+'. Изменения не сохранятся на сервер.',true)})}
+    syncLabel('· ☁ синхронизировано')},
+  e=>{online=false;syncLabel('· ⚠ нет связи с сервером: '+e.message+'. Изменения не сохранятся на сервер.',true)})}
 try{const t=sessionStorage.getItem('tab');if(t)document.querySelector(`nav button[data-tab="${t}"]`)?.click()}catch(e){}
 </script>
 </body>

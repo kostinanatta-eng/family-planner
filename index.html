@@ -275,9 +275,17 @@ function syncLabel(t,bad){const el=document.getElementById('sync');if(el){el.tex
 async function api(action,data){
   const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,data,initData:TG.initData})});
   const j=await r.json();if(!j.ok)throw new Error(j.error+(j.id?' (ваш ID '+j.id+')':''));return j}
-function save(){S.updated=Date.now();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
-  if(!REMOTE||!online)return;clearTimeout(pushTimer);syncLabel('· сохраняю…');
-  pushTimer=setTimeout(()=>api('save',S).then(()=>syncLabel('· ☁ сохранено')).catch(e=>syncLabel('· ⚠ не сохранилось: '+e.message,true)),800)}
+// Записи, добавленные через бота (id «tg…»), запоминаем как «виденные» — чтобы удалённые не возвращались
+function markSeenTg(){const s=new Set(S.seenTg||[]);[...(S.tasks||[]),...(S.money||[])].forEach(x=>{if(String(x.id).startsWith('tg'))s.add(x.id)});S.seenTg=[...s]}
+function adopt(data){S={...blank(),...data};markSeenTg();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}try{boot()}catch(e){console.error(e)}}
+let pushing=false;
+function save(){S.updated=Date.now();markSeenTg();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+  if(!REMOTE||!online)return;clearTimeout(pushTimer);syncLabel('· сохраняю…');pushing=true;
+  pushTimer=setTimeout(()=>api('save',S).then(j=>{pushing=false;if(j.data)adopt(j.data);syncLabel('· ☁ сохранено')})
+    .catch(e=>{pushing=false;syncLabel('· ⚠ не сохранилось: '+e.message,true)}),800)}
+// Подтягиваем то, что пришло через бота, пока планер открыт или свёрнут
+function refreshFromServer(){if(!REMOTE||!online||pushing||document.visibilityState==='hidden')return;
+  api('load').then(j=>{if(!pushing&&j.data&&(j.data.updated||0)>(S.updated||0)){adopt(j.data);syncLabel('· ☁ обновлено')}}).catch(()=>{})}
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -528,12 +536,13 @@ function render(){renderToday();renderTasks();renderBudget();renderSchool();rend
 $('tDate').value=TODAY;$('tViewDate').value=TODAY;$('bDate').value=TODAY;$('bMonth').value=TODAY.slice(0,7);
 function boot(){$('sMe').value=S.me;$('sKid').value=S.kid;fillCats();renderLimits();applyTheme();renderHeader();render()}
 boot();
-if(TG){TG.ready();TG.expand()}
+if(TG){TG.ready();TG.expand();try{TG.onEvent('activated',refreshFromServer)}catch(e){}}
+document.addEventListener('visibilitychange',refreshFromServer);
+setInterval(refreshFromServer,60000);
 if(REMOTE){syncLabel('· загружаю…');loadExternal();
   api('load').then(j=>{
     if(j.data&&(S.updated||0)>(j.data.updated||0)){save();syncLabel('· ☁ отправляю свежие изменения…');return} // на телефоне новее — не затираем
-    if(j.data){S={...blank(),...j.data};try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
-      try{boot()}catch(e){console.error(e)}} // ошибка отрисовки не должна отключать сохранение
+    if(j.data)adopt(j.data); // ошибка отрисовки внутри adopt не отключает сохранение
     else save(); // сервер пустой — отправляем то, что есть
     syncLabel('· ☁ синхронизировано')},
   e=>{online=false;syncLabel('· ⚠ нет связи с сервером: '+e.message+'. Изменения не сохранятся на сервер.',true)})}

@@ -94,6 +94,7 @@ a{color:var(--accent)}
   <div class="grid">
     <div class="card"><h2>Мои дела на сегодня</h2><ul class="list" id="todayTasks"></ul>
       <div class="row" style="margin-top:8px"><input class="grow" id="quickTask" placeholder="Быстро добавить дело и Enter"></div></div>
+    <div class="card" id="extCard" style="display:none"><h2>Календарь и Notion</h2><div id="extList"><div class="empty">Загружаю…</div></div></div>
     <div class="card"><h2 id="kidTodayTitle">Уроки дочери сегодня</h2><div id="todayLessons"></div></div>
     <div class="card"><h2>Бюджет месяца</h2><div id="todayBudget"></div></div>
     <div class="card"><h2>Идея на выходные</h2><div id="todayIdea"></div></div>
@@ -416,14 +417,32 @@ document.addEventListener('click',e=>{const a=e.target.closest('a[target=_blank]
 function renderHeader(){const h=new Date().getHours();const g=h<12?'Доброе утро':h<18?'Добрый день':'Добрый вечер';
   $('hello').textContent=g+(S.me?', '+S.me:'')+'!';
   $('todayLabel').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
-function render(){renderToday();renderTasks();renderBudget();renderSchool();renderMoscow()}
+// --- Google Календарь и Notion (только в Telegram, приходят с сервера)
+let EXT=null;
+function dayTitle(d){const t=iso(Date.now()+864e5);if(d===TODAY)return 'Сегодня';if(d===t)return 'Завтра';
+  return new Date(d+'T12:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}
+function renderExt(){if(!REMOTE)return;$('extCard').style.display='';if(!EXT)return;
+  const items=EXT.calendar.map(e=>({...e,kind:'cal'})).concat(EXT.notion.map(e=>({...e,kind:'notion'})));
+  const groups={};items.forEach(i=>{const k=!i.date?'nodate':i.date<TODAY?'late':i.date;(groups[k]=groups[k]||[]).push(i)});
+  const order=['late'].concat(Object.keys(groups).filter(k=>/^\d/.test(k)).sort(),['nodate']).filter(k=>groups[k]);
+  let h=order.map(k=>{const L=groups[k].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).slice(0,k==='nodate'?8:30);
+    return `<div class="small ${k==='late'?'neg':'muted'}" style="margin-top:10px;font-weight:600">${k==='late'?'Просрочено в Notion':k==='nodate'?'Notion без даты':dayTitle(k)}</div>
+    <ul class="list">${L.map(i=>`<li><span class="small muted" style="width:44px">${i.time||(i.kind==='cal'?'весь день':'')}</span>
+      <span class="grow">${i.url?`<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a>`:esc(i.title)}${i.place?` <span class="small muted">— ${esc(i.place)}</span>`:''}</span>
+      <span class="tag ${i.kind==='notion'?'warn':''}" title="${esc(i.src)}">${i.kind==='cal'?'Календарь':'Notion'}</span></li>`).join('')}</ul>`}).join('');
+  if(!items.length)h='<div class="empty">На неделю ничего нет.</div>';
+  if(EXT.errors&&EXT.errors.length)h+=`<p class="small neg">⚠ ${esc(EXT.errors.join('; '))}</p>`;
+  $('extList').innerHTML=h}
+function loadExternal(){api('external').then(j=>{EXT=j.data;renderExt()},e=>{EXT={calendar:[],notion:[],errors:[e.message]};renderExt()})}
+
+function render(){renderToday();renderTasks();renderBudget();renderSchool();renderMoscow();renderExt()}
 
 // старт
 $('tDate').value=TODAY;$('tViewDate').value=TODAY;$('bDate').value=TODAY;$('bMonth').value=TODAY.slice(0,7);
 function boot(){$('sMe').value=S.me;$('sKid').value=S.kid;fillCats();renderLimits();applyTheme();renderHeader();render()}
 boot();
 if(TG){TG.ready();TG.expand()}
-if(REMOTE){syncLabel('· загружаю…');
+if(REMOTE){syncLabel('· загружаю…');loadExternal();
   api('load').then(j=>{
     if(j.data&&(S.updated||0)>(j.data.updated||0)){save();syncLabel('· ☁ отправляю свежие изменения…');return} // на телефоне новее — не затираем
     if(j.data){S={...blank(),...j.data};try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}

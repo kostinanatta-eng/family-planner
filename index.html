@@ -72,6 +72,14 @@ table{border-collapse:collapse;width:100%}
 a{color:var(--accent)}
 .empty{color:var(--muted);padding:8px 0}
 #tTitle,#bNote,#mTitle{min-width:200px}
+.strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.strip button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:6px 0;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0}
+.strip button small{font-size:11px;color:var(--muted)}
+.strip button.today{border-color:var(--accent);color:var(--accent)}
+.strip button.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.strip button.sel small{color:#fff}
+.strip i{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.7}
+.strip i.no{visibility:hidden}
 @media (max-width:520px){.stats{grid-template-columns:1fr 1fr}}
 </style>
 </head>
@@ -92,12 +100,24 @@ a{color:var(--accent)}
 <main>
 <!-- СЕГОДНЯ -->
 <section id="today" class="on">
+  <div class="card" style="margin-bottom:16px">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <button class="btn ghost" id="dPrev" aria-label="Предыдущий день">◀</button>
+        <input type="date" id="dSel" aria-label="Выбрать день">
+        <button class="btn ghost" id="dNext" aria-label="Следующий день">▶</button>
+      </div>
+      <button class="btn ghost" id="dToday">К сегодня</button>
+    </div>
+    <h2 id="dTitle" style="margin:14px 0 10px"></h2>
+    <div class="strip" id="dStrip"></div>
+  </div>
   <div class="grid">
-    <div class="card"><h2>Мои дела на сегодня</h2><ul class="list" id="todayTasks"></ul>
-      <div class="row" style="margin-top:8px"><input class="grow" id="quickTask" placeholder="Быстро добавить дело и Enter"></div></div>
-    <div class="card" id="extCard" style="display:none"><h2>Календарь и Notion</h2><div id="extList"><div class="empty">Загружаю…</div></div></div>
-    <div class="card"><h2 id="kidTodayTitle">Уроки дочери сегодня</h2><div id="todayLessons"></div></div>
-    <div class="card"><h2>Бюджет месяца</h2><div id="todayBudget"></div></div>
+    <div class="card"><h2 id="dTasksTitle">Дела</h2><ul class="list" id="todayTasks"></ul>
+      <div class="row" style="margin-top:8px"><input class="grow" id="quickTask" placeholder="Добавить дело на этот день и Enter"></div></div>
+    <div class="card" id="extCard" style="display:none"><h2>Календарь и Notion</h2><div id="extList"></div></div>
+    <div class="card"><h2 id="kidTodayTitle">Уроки и кружки</h2><div id="todayLessons"></div></div>
+    <div class="card"><h2>Бюджет</h2><div id="todayBudget"></div></div>
     <div class="card"><h2>Идея на выходные</h2><div id="todayIdea"></div></div>
   </div>
 </section>
@@ -263,6 +283,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const iso=d=>{const z=new Date(d);z.setMinutes(z.getMinutes()-z.getTimezoneOffset());return z.toISOString().slice(0,10)};
 const TODAY=iso(new Date());
+let SEL=TODAY;try{const s=sessionStorage.getItem('sel');if(/^\d{4}-\d{2}-\d{2}$/.test(s||''))SEL=s}catch(e){} // выбранный день на экране «Сегодня»
 const rub=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
 const uid=()=>Math.random().toString(36).slice(2,9);
 const kidName=()=>S.kid||'дочери';
@@ -285,7 +306,7 @@ function taskLi(t,showDate){
 function addTask(title,date,cat,prio){if(!title.trim())return;S.tasks.push({id:uid(),title:title.trim(),date,cat,prio,done:false});save();render()}
 $('tAdd').onclick=()=>{addTask($('tTitle').value,$('tDate').value,$('tCat').value,$('tPrio').value);$('tTitle').value=''};
 $('tTitle').onkeydown=e=>{if(e.key==='Enter')$('tAdd').click()};
-$('quickTask').onkeydown=e=>{if(e.key==='Enter'){addTask(e.target.value,TODAY,'Я','0');e.target.value=''}};
+$('quickTask').onkeydown=e=>{if(e.key==='Enter'){addTask(e.target.value,SEL,'Я','0');e.target.value=''}};
 ['tView','tViewDate','tFilterCat'].forEach(i=>$(i).onchange=render);
 $('moveOverdue').onclick=()=>{S.tasks.forEach(t=>{if(t.date&&t.date<TODAY&&!t.done)t.date=TODAY});save();render()};
 $('clearDone').onclick=()=>{S.tasks=S.tasks.filter(t=>!t.done);save();render()};
@@ -404,23 +425,61 @@ function renderMoscow(){const f=$('mFilter').value;let L=S.ideas;
   if(f==='me')L=L.filter(i=>i.tag==='me');if(f==='want')L=L.filter(i=>i.status==='want');if(f==='been')L=L.filter(i=>i.status==='been');
   $('mList').innerHTML=L.map(ideaCard).join('')||'<div class="empty">Ничего не найдено.</div>'}
 
-// --- СЕГОДНЯ
+// --- ДЕНЬ (экран «Сегодня» с выбором даты)
+const addDays=(d,n)=>iso(new Date(d+'T12:00').getTime()+n*864e5);
+const mondayOf=d=>addDays(d,-((new Date(d+'T12:00').getDay()+6)%7));
+const wdOf=d=>(new Date(d+'T12:00').getDay()+6)%7; // 0 = Пн
+function setDay(d){if(!d)return;SEL=d;try{sessionStorage.setItem('sel',d)}catch(e){}ensureExt(d);renderToday()}
+$('dPrev').onclick=()=>setDay(addDays(SEL,-1));
+$('dNext').onclick=()=>setDay(addDays(SEL,1));
+$('dToday').onclick=()=>setDay(TODAY);
+$('dSel').onchange=e=>setDay(e.target.value);
+$('dStrip').onclick=e=>{const b=e.target.closest('button[data-day]');if(b)setDay(b.dataset.day)};
+function dayHasItems(d){const ext=extFor(d);
+  return S.tasks.some(t=>t.date===d&&!t.done)||notionTodo().some(t=>t.date===d&&!t.done)||S.money.some(x=>x.date===d)||
+    !!(ext&&(ext.calendar.some(e=>e.date===d)||ext.notion.some(e=>e.date===d)))}
 function renderToday(){
-  const T=S.tasks.filter(t=>(t.date===TODAY)||(t.date&&t.date<TODAY&&!t.done))
-    .concat(notionTodo().filter(t=>t.date===TODAY)).sort(byOrder);
-  $('todayTasks').innerHTML=T.map(t=>anyLi(t,true)).join('')||'<li class="empty">На сегодня дел нет.</li>';
-  $('kidTodayTitle').textContent=(S.kid?S.kid+': ':'Дочь: ')+'уроки и кружки сегодня';
-  const d=dow();let h='';
-  if(d<0||(d===5&&!S.tt.sat))h='<div class="empty">Сегодня уроков нет — выходной.</div>';
-  else{const ls=S.tt.times.map((tm,r)=>({tm,s:S.tt.cells[d+'-'+r]})).filter(x=>x.s);
+  const d=SEL,isT=d===TODAY,wd=wdOf(d),dt=new Date(d+'T12:00');
+  $('dSel').value=d;
+  const rel=isT?'Сегодня, ':d===addDays(TODAY,1)?'Завтра, ':d===addDays(TODAY,-1)?'Вчера, ':'';
+  $('dTitle').textContent=rel+dt.toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',...(d.slice(0,4)!==TODAY.slice(0,4)?{year:'numeric'}:{})});
+  $('dToday').style.visibility=isT?'hidden':'';
+  const mon=mondayOf(d);
+  $('dStrip').innerHTML=[0,1,2,3,4,5,6].map(i=>{const x=addDays(mon,i);
+    return `<button data-day="${x}" class="${x===d?'sel':''} ${x===TODAY?'today':''}" aria-label="${x}"><small>${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'][i]}</small><b>${+x.slice(8)}</b><i class="${dayHasItems(x)?'':'no'}"></i></button>`}).join('');
+
+  // Дела: свои + Notion to do на этот день (сегодня — ещё и просроченные свои)
+  const T=S.tasks.filter(t=>t.date===d||(isT&&t.date&&t.date<TODAY&&!t.done))
+    .concat(notionTodo().filter(t=>t.date===d)).sort(byOrder);
+  $('dTasksTitle').textContent=isT?'Дела на сегодня':'Дела на этот день';
+  $('todayTasks').innerHTML=T.map(t=>anyLi(t,isT)).join('')||'<li class="empty">Дел нет.</li>';
+
+  renderDayExt(d);
+
+  // Уроки и кружки по дню недели
+  $('kidTodayTitle').textContent=(S.kid||'Дочь')+': уроки и кружки';
+  let h='';
+  if(wd===6||(wd===5&&!S.tt.sat))h='<div class="empty">Уроков нет — выходной.</div>';
+  else{const ls=S.tt.times.map((tm,r)=>({tm,s:S.tt.cells[wd+'-'+r]})).filter(x=>x.s);
     h=ls.length?'<ul class="list">'+ls.map(x=>`<li><span class="small muted" style="width:44px">${x.tm}</span><span class="grow">${esc(x.s)}</span></li>`).join('')+'</ul>'
       :'<div class="empty">Расписание не заполнено — вкладка «Уроки».</div>';}
-  const cl=clubsFor(new Date().getDay()===0?6:new Date().getDay()-1);
+  const cl=clubsFor(wd);
   if(cl.length)h+='<div style="margin-top:8px">'+cl.map(c=>`<span class="tag kid" style="margin-right:6px">${c.time} ${esc(c.name)}</span>`).join('')+'</div>';
   $('todayLessons').innerHTML=h;
-  const m=TODAY.slice(0,7);$('todayBudget').innerHTML=summaryHtml(m)+'<div style="margin-top:12px">'+catsHtml(m)+'</div>';
+
+  // Бюджет: операции этого дня + итог его месяца
+  const ops=S.money.filter(x=>x.date===d);
+  const dExp=ops.filter(x=>x.type==='exp').reduce((a,x)=>a+x.sum,0),dInc=ops.filter(x=>x.type==='inc').reduce((a,x)=>a+x.sum,0);
+  const monthName=dt.toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+  $('todayBudget').innerHTML=`<div class="small muted" style="font-weight:600">За этот день</div>`+
+    (ops.length?'<ul class="list">'+ops.map(x=>`<li><span class="grow">${esc(x.cat)}${x.note?` <span class="small muted">— ${esc(x.note)}</span>`:''}</span><b class="${x.type==='inc'?'pos':''}">${x.type==='inc'?'+':'−'}${rub(x.sum)}</b></li>`).join('')+'</ul>'+
+      `<div class="small muted">Расходы ${rub(dExp)}${dInc?' · доходы '+rub(dInc):''}</div>`:'<div class="empty">Операций нет.</div>')+
+    `<button class="btn ghost" id="dAddMoney" style="margin:8px 0 14px">+ Операция на этот день</button>`+
+    `<div class="small muted" style="font-weight:600;margin-bottom:6px">Месяц: ${monthName}</div>`+summaryHtml(d.slice(0,7))+'<div style="margin-top:12px">'+catsHtml(d.slice(0,7))+'</div>';
+  $('dAddMoney').onclick=()=>{$('bDate').value=d;$('bMonth').value=d.slice(0,7);document.querySelector('nav button[data-tab="budget"]').click();$('bSum').focus()};
+
   const pool=S.ideas.filter(i=>i.status==='want').concat(S.ideas.filter(i=>i.kids&&i.status!=='been'));
-  const pick=pool[new Date().getDate()%Math.max(1,pool.length)];
+  const pick=pool[dt.getDate()%Math.max(1,pool.length)];
   $('todayIdea').innerHTML=pick?ideaCard(pick).replace('class="card idea','class="idea'):'<div class="empty">Добавьте идеи во вкладке «Москва».</div>';
 }
 
@@ -440,24 +499,30 @@ function renderHeader(){const h=new Date().getHours();const g=h<12?'Доброе
   $('hello').textContent=g+(S.me?', '+S.me:'')+'!';
   $('todayLabel').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
 // --- Google Календарь и Notion (только в Telegram, приходят с сервера)
-let EXT=null;
-function dayTitle(d){const t=iso(Date.now()+864e5);if(d===TODAY)return 'Сегодня';if(d===t)return 'Завтра';
-  return new Date(d+'T12:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}
-function renderExt(){if(!REMOTE)return;$('extCard').style.display='';if(!EXT)return;
-  const items=EXT.calendar.map(e=>({...e,kind:'cal'})).concat(EXT.notion.map(e=>({...e,kind:'notion'})));
-  const groups={};items.forEach(i=>{const k=!i.date?'nodate':i.date<TODAY?'late':i.date;(groups[k]=groups[k]||[]).push(i)});
-  const order=['late'].concat(Object.keys(groups).filter(k=>/^\d/.test(k)).sort(),['nodate']).filter(k=>groups[k]);
-  let h=order.map(k=>{const L=groups[k].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).slice(0,k==='nodate'?8:30);
-    return `<div class="small ${k==='late'?'neg':'muted'}" style="margin-top:10px;font-weight:600">${k==='late'?'Просрочено в Notion':k==='nodate'?'Notion без даты':dayTitle(k)}</div>
-    <ul class="list">${L.map(i=>`<li><span class="small muted" style="width:44px">${i.time||(i.kind==='cal'?'весь день':'')}</span>
+// Данные грузятся по неделям (Пн–Вс) под выбранный день; EXT — текущая неделя (для вкладки «Дела»)
+let EXT=null;const EXTW={};
+const extFor=d=>EXTW[mondayOf(d)]||null;
+function ensureExt(d){if(!REMOTE)return;const m=mondayOf(d);if(m in EXTW)return;EXTW[m]=null;
+  const done=data=>{EXTW[m]=data;if(m===mondayOf(TODAY)||!EXT)EXT=data;render()};
+  api('external',{from:m,to:addDays(m,6)}).then(j=>done(j.data),e=>done({calendar:[],notion:[],todo:[],errors:[e.message]}))}
+function loadExternal(){ensureExt(TODAY);ensureExt(SEL)}
+function renderDayExt(d){
+  if(!REMOTE){$('extCard').style.display='none';return}
+  $('extCard').style.display='';
+  const ext=extFor(d);if(!ext){$('extList').innerHTML='<div class="empty">Загружаю…</div>';return}
+  const li=i=>`<li><span class="small muted" style="width:44px">${i.time||(i.kind==='cal'?'весь день':'')}</span>
       <span class="grow">${i.url?`<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.title)}</a>`:esc(i.title)}${i.place?` <span class="small muted">— ${esc(i.place)}</span>`:''}</span>
-      <span class="tag ${i.kind==='notion'?'warn':''}" title="${esc(i.src)}">${i.kind==='cal'?'Календарь':'Notion'}</span></li>`).join('')}</ul>`}).join('');
-  if(!items.length)h='<div class="empty">На неделю ничего нет.</div>';
-  if(EXT.errors&&EXT.errors.length)h+=`<p class="small neg">⚠ ${esc(EXT.errors.join('; '))}</p>`;
+      <span class="tag ${i.kind==='notion'?'warn':''}" title="${esc(i.src)}">${i.kind==='cal'?'Календарь':'Notion'}</span></li>`;
+  const items=ext.calendar.filter(e=>e.date===d).map(e=>({...e,kind:'cal'}))
+    .concat(ext.notion.filter(e=>e.date===d).map(e=>({...e,kind:'notion'})))
+    .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  let h=items.length?'<ul class="list">'+items.map(li).join('')+'</ul>':'<div class="empty">В этот день событий нет.</div>';
+  const late=d===TODAY?ext.notion.filter(t=>t.date&&t.date<TODAY):[];
+  if(late.length)h+='<div class="small neg" style="margin-top:10px;font-weight:600">Просрочено в Notion</div><ul class="list">'+late.map(i=>li({...i,kind:'notion'})).join('')+'</ul>';
+  if(ext.errors&&ext.errors.length)h+=`<p class="small neg">⚠ ${esc(ext.errors.join('; '))}</p>`;
   $('extList').innerHTML=h}
-function loadExternal(){api('external').then(j=>{EXT=j.data;render()},e=>{EXT={calendar:[],notion:[],todo:[],errors:[e.message]};render()})}
 
-function render(){renderToday();renderTasks();renderBudget();renderSchool();renderMoscow();renderExt()}
+function render(){renderToday();renderTasks();renderBudget();renderSchool();renderMoscow()}
 
 // старт
 $('tDate').value=TODAY;$('tViewDate').value=TODAY;$('bDate').value=TODAY;$('bMonth').value=TODAY.slice(0,7);

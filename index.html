@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Семейный планер</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:#f6f4ef; --card:#ffffff; --ink:#1f2328; --muted:#6b7280; --line:#e6e2d8;
+  --accent:#2f6f5e; --accent-soft:#e3efe9; --warn:#b4532a; --warn-soft:#f8e7de;
+  --kid:#6a4fb3; --kid-soft:#ece6f8; --good:#2f7d32;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161819; --card:#1f2224; --ink:#e8e6e1; --muted:#9aa0a6; --line:#2e3235;
+    --accent:#6cc2a8; --accent-soft:#1f3530; --warn:#e8916a; --warn-soft:#3a261d;
+    --kid:#b39cf0; --kid-soft:#2b2440; --good:#7cc47f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161819; --card:#1f2224; --ink:#e8e6e1; --muted:#9aa0a6; --line:#2e3235;
+  --accent:#6cc2a8; --accent-soft:#1f3530; --warn:#e8916a; --warn-soft:#3a261d;
+  --kid:#b39cf0; --kid-soft:#2b2440; --good:#7cc47f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:20px 16px 8px;max-width:1100px;margin:0 auto}
+header h1{margin:0;font-size:24px}
+header .sub{color:var(--muted)}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+nav .in{max-width:1100px;margin:0 auto;display:flex;gap:4px;overflow-x:auto;padding:8px 16px}
+nav button{border:0;background:transparent;color:var(--muted);padding:8px 12px;border-radius:8px;font:inherit;cursor:pointer;white-space:nowrap}
+nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:16px}
+section{display:none} section.on{display:block}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h2{margin:0 0 12px;font-size:17px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+.btn{font:inherit;border:0;border-radius:8px;padding:8px 14px;background:var(--accent);color:#fff;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+.x{border:0;background:none;color:var(--muted);cursor:pointer;font-size:16px}
+ul.list{list-style:none;margin:0;padding:0}
+ul.list li{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+ul.list li:last-child{border-bottom:0}
+.grow{flex:1;min-width:0}
+.done .t{text-decoration:line-through;color:var(--muted)}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.tag.kid{background:var(--kid-soft);color:var(--kid)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.muted{color:var(--muted)} .small{font-size:13px}
+.big{font-size:clamp(16px,2.2vw,24px);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.neg{color:var(--warn)} .pos{color:var(--good)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--bg);border-radius:10px;padding:10px}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar i.over{background:var(--warn)}
+table{border-collapse:collapse;width:100%}
+.tt-wrap{overflow-x:auto}
+.tt td,.tt th{border:1px solid var(--line);padding:4px;text-align:left;vertical-align:top}
+.tt th{background:var(--kid-soft);color:var(--kid);font-weight:600;font-size:13px}
+.tt td input{width:100%;border:0;background:transparent;padding:4px}
+.tt td.today{background:var(--kid-soft)}
+.tt .num{font-size:12px;color:var(--muted);white-space:nowrap}
+.ideas{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.idea h3{margin:0 0 4px;font-size:15px}
+.idea.been{opacity:.6}
+a{color:var(--accent)}
+.empty{color:var(--muted);padding:8px 0}
+@media (max-width:520px){.stats{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="hello">Семейный планер</h1>
+  <div class="sub"><span id="todayLabel"></span> <span id="sync" class="small"></span></div>
+</header>
+<nav><div class="in" id="tabs">
+  <button data-tab="today" class="on">Сегодня</button>
+  <button data-tab="tasks">Дела</button>
+  <button data-tab="budget">Бюджет</button>
+  <button data-tab="school">Уроки</button>
+  <button data-tab="moscow">Москва</button>
+  <button data-tab="settings">Настройки</button>
+</div></nav>
+
+<main>
+<!-- СЕГОДНЯ -->
+<section id="today" class="on">
+  <div class="grid">
+    <div class="card"><h2>Мои дела на сегодня</h2><ul class="list" id="todayTasks"></ul>
+      <div class="row" style="margin-top:8px"><input class="grow" id="quickTask" placeholder="Быстро добавить дело и Enter"></div></div>
+    <div class="card"><h2 id="kidTodayTitle">Уроки дочери сегодня</h2><div id="todayLessons"></div></div>
+    <div class="card"><h2>Бюджет месяца</h2><div id="todayBudget"></div></div>
+    <div class="card"><h2>Идея на выходные</h2><div id="todayIdea"></div></div>
+  </div>
+</section>
+
+<!-- ДЕЛА -->
+<section id="tasks">
+  <div class="card" style="margin-bottom:16px">
+    <h2>Новое дело</h2>
+    <div class="row">
+      <input class="grow" id="tTitle" placeholder="Что сделать">
+      <input type="date" id="tDate">
+      <select id="tCat"><option>Я</option><option>Дочь</option><option>Дом</option><option>Работа</option><option>Покупки</option></select>
+      <select id="tPrio"><option value="0">Обычное</option><option value="1">Важное</option></select>
+      <button class="btn" id="tAdd">Добавить</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h2 style="margin:0">Список</h2>
+      <div class="row">
+        <select id="tView"><option value="day">На выбранный день</option><option value="week">Ближайшие 7 дней</option><option value="overdue">Просроченные</option><option value="all">Все невыполненные</option><option value="nodate">Без даты</option></select>
+        <input type="date" id="tViewDate">
+        <select id="tFilterCat"><option value="">Все</option><option>Я</option><option>Дочь</option><option>Дом</option><option>Работа</option><option>Покупки</option></select>
+      </div>
+    </div>
+    <ul class="list" id="taskList"></ul>
+    <div class="row" style="margin-top:10px"><button class="btn ghost" id="moveOverdue">Перенести просроченное на сегодня</button><button class="btn ghost" id="clearDone">Убрать выполненные</button></div>
+  </div>
+</section>
+
+<!-- БЮДЖЕТ -->
+<section id="budget">
+  <div class="card" style="margin-bottom:16px">
+    <h2>Добавить операцию</h2>
+    <div class="row">
+      <select id="bType"><option value="exp">Расход</option><option value="inc">Доход</option></select>
+      <input type="number" id="bSum" placeholder="Сумма, ₽" style="width:130px" inputmode="decimal">
+      <select id="bCat"></select>
+      <input class="grow" id="bNote" placeholder="Комментарий (необязательно)">
+      <input type="date" id="bDate">
+      <button class="btn" id="bAdd">Добавить</button>
+    </div>
+  </div>
+  <div class="row" style="margin-bottom:12px"><span class="muted">Месяц:</span><input type="month" id="bMonth"></div>
+  <div class="grid">
+    <div class="card"><h2>Итог месяца</h2><div id="bSummary"></div></div>
+    <div class="card"><h2>Расходы по категориям и лимиты</h2><div id="bCats"></div>
+      <p class="small muted">Лимит задаётся в Настройках. Красная полоса — лимит превышен.</p></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>Операции</h2><ul class="list" id="bList"></ul></div>
+</section>
+
+<!-- УРОКИ -->
+<section id="school">
+  <div class="card" style="margin-bottom:16px">
+    <h2 id="ttTitle">Расписание уроков</h2>
+    <p class="small muted" style="margin-top:-6px">Просто впишите предметы в клетки — всё сохраняется само. Время звонков можно поменять.</p>
+    <div class="tt-wrap"><table class="tt" id="ttTable"></table></div>
+    <div class="row" style="margin-top:8px"><label class="small"><input type="checkbox" id="ttSat"> учится по субботам</label></div>
+  </div>
+  <div class="grid">
+    <div class="card"><h2>Кружки и секции</h2>
+      <div class="row" style="margin-bottom:8px">
+        <input class="grow" id="cName" placeholder="Название (танцы, английский…)">
+        <select id="cDay"></select>
+        <input type="time" id="cTime">
+        <input type="number" id="cCost" placeholder="₽/мес" style="width:100px">
+        <button class="btn" id="cAdd">+</button>
+      </div>
+      <ul class="list" id="cList"></ul></div>
+    <div class="card"><h2>Школьное: важное</h2>
+      <p class="small muted" style="margin-top:-6px">Контрольные, собрания, «принести в школу». Попадёт в «Дела» с меткой «Дочь».</p>
+      <div class="row"><input class="grow" id="sNote" placeholder="Напр.: контрольная по математике"><input type="date" id="sDate"><button class="btn" id="sAdd">+</button></div>
+      <ul class="list" id="sList" style="margin-top:8px"></ul></div>
+  </div>
+</section>
+
+<!-- МОСКВА -->
+<section id="moscow">
+  <div class="card" style="margin-bottom:16px">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Куда сходить в Москве</h2>
+      <div class="row">
+        <select id="mFilter"><option value="">Все</option><option value="kids">С ребёнком</option><option value="free">Бесплатно</option><option value="me">Для себя</option><option value="want">Хочу сходить</option><option value="been">Уже были</option></select>
+      </div>
+    </div>
+    <p class="small muted">Стартовый список собран на конец сентября 2026. Даты и цены перед походом проверяйте на сайте. Свежая афиша:
+      <a href="https://afisha.yandex.ru/moscow/kids" target="_blank" rel="noopener">Яндекс Афиша (дети)</a> ·
+      <a href="https://www.afisha.ru/msk/kids/" target="_blank" rel="noopener">Афиша-Дети</a> ·
+      <a href="https://kudago.com/msk/kids/" target="_blank" rel="noopener">KudaGo</a> ·
+      <a href="https://kudamoscow.ru/event/free/fest/" target="_blank" rel="noopener">Бесплатное</a></p>
+    <details><summary class="small">Добавить своё место</summary>
+      <div class="row" style="margin-top:8px">
+        <input class="grow" id="mTitle" placeholder="Название">
+        <input class="grow" id="mPlace" placeholder="Где">
+        <input id="mWhen" placeholder="Когда" style="width:130px">
+        <input id="mPrice" placeholder="Цена" style="width:110px">
+        <select id="mTag"><option value="kids">С ребёнком</option><option value="me">Для себя</option><option value="free">Бесплатно</option></select>
+        <input class="grow" id="mLink" placeholder="Ссылка (необязательно)">
+        <button class="btn" id="mAdd">Добавить</button>
+      </div></details>
+  </div>
+  <div class="ideas" id="mList"></div>
+</section>
+
+<!-- НАСТРОЙКИ -->
+<section id="settings">
+  <div class="grid">
+    <div class="card"><h2>Имена</h2>
+      <div class="row" style="margin-bottom:8px"><span class="muted" style="width:110px">Ваше имя</span><input class="grow" id="sMe"></div>
+      <div class="row"><span class="muted" style="width:110px">Имя дочери</span><input class="grow" id="sKid"></div></div>
+    <div class="card"><h2>Лимиты бюджета, ₽ в месяц</h2><div id="limits"></div></div>
+    <div class="card"><h2>Резервная копия</h2>
+      <p class="small muted">Данные хранятся только в этом браузере на этом компьютере. Раз в неделю сохраняйте копию — если почистить браузер, данные пропадут.</p>
+      <div class="row"><button class="btn" id="exp">Скачать копию</button><label class="btn ghost">Загрузить копию<input type="file" id="imp" accept=".json" hidden></label></div>
+      <div class="row" style="margin-top:12px"><span class="muted small">Тема:</span><select id="theme"><option value="">Как в системе</option><option value="light">Светлая</option><option value="dark">Тёмная</option></select></div></div>
+  </div>
+</section>
+</main>
+
+<script>
+const KEY='family-planner-v1';
+// Адрес сервера (Google Apps Script) приходит в ссылке: ...?api=https://script.google.com/...
+// Нет адреса = планер работает только локально в браузере.
+let API_URL='';try{API_URL=new URLSearchParams(location.search).get('api')||''}catch(e){}
+const TG=(window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initData)?Telegram.WebApp:null;
+const REMOTE=!!(TG&&API_URL);
+const DAYS=['Пн','Вт','Ср','Чт','Пт','Сб'];
+const EXP_CATS=['Продукты','Дочь: школа и кружки','Дом и ЖКХ','Транспорт','Здоровье','Одежда','Кафе и доставка','Развлечения','Связь и подписки','Другое'];
+const INC_CATS=['Зарплата','Подработка','Пособия','Другое'];
+const IDEAS=[
+ {title:'Павильон «Московский транспорт»',place:'ВДНХ',when:'постоянно',price:'бесплатно',tag:'free',kids:true,link:'https://mag.russpass.ru/rubric/moskva-dlya-detej/kuda-skhodit-s-detmi-v-oktyabre-v-moskve',note:'Интерактивный музей: макет вагона метро, игры.'},
+ {title:'Квест-экскурсия «Глазами пионера»',place:'ВДНХ',when:'осень',price:'уточнить',tag:'kids',kids:true,link:'https://mag.russpass.ru/rubric/moskva-dlya-detej/kuda-skhodit-s-detmi-v-oktyabre-v-moskve',note:'Восстановить дневник пионера 1957 года, загадки по павильонам.'},
+ {title:'Московский планетарий',place:'Садовая-Кудринская, 5',when:'постоянно',price:'платно',tag:'kids',kids:true,link:'https://www.planetarium-moscow.ru/',note:'Звёздный зал, «Лунариум», музей «Урания».'},
+ {title:'Мультимедиа «Большая страна»',place:'Пятницкая улица',when:'постоянно',price:'платно',tag:'kids',kids:true,link:'https://mag.russpass.ru/rubric/moskva-dlya-detej/kuda-skhodit-s-detmi-v-oktyabre-v-moskve',note:'Путешествие по России с проекциями и мини-квестами. Хорошо в дождь.'},
+ {title:'Экспериментаниум',place:'Бутырская, 46',when:'выставка до 12 октября',price:'платно',tag:'kids',kids:true,link:'https://experimentanium.ru/',note:'Музей занимательных наук — всё можно трогать.'},
+ {title:'Кидзания',place:'ТЦ «Авиапарк»',when:'постоянно',price:'платно',tag:'kids',kids:true,link:'https://kidzania.ru/',note:'Город профессий: дети «работают» и получают зарплату.'},
+ {title:'«Остров Мечты» — крытая часть',place:'Нагатинская пойма',when:'постоянно',price:'платно',tag:'kids',kids:true,link:'https://dreamisland.ru/',note:'Аттракционы под крышей — вариант на холодный день.'},
+ {title:'Концерт с песочной анимацией «Вокруг света»',place:'уточнить на афише',when:'октябрь',price:'платно',tag:'kids',kids:true,link:'https://mag.russpass.ru/rubric/moskva-dlya-detej/kuda-skhodit-s-detmi-v-oktyabre-v-moskve',note:'Оркестр, хор и песочная анимация. 6+.'},
+ {title:'Иммерсивный спектакль «Загадка амулета»',place:'Театр «Морфеус»',when:'по расписанию',price:'платно',tag:'kids',kids:true,link:'https://mag.russpass.ru/rubric/moskva-dlya-detej/kuda-skhodit-s-detmi-v-oktyabre-v-moskve',note:'Спектакль с завязанными глазами: звуки и запахи.'},
+ {title:'Фестиваль «Мода в спорте 4.0»',place:'Музей Москвы',when:'9–10 октября',price:'бесплатно',tag:'free',kids:false,link:'https://allfest.ru/r/besplatnye-festivali-v-moskve',note:'Городской фестиваль, вход свободный.'},
+ {title:'Comic Con Russia',place:'уточнить на сайте',when:'октябрь–ноябрь',price:'платно',tag:'me',kids:true,link:'https://www.kp.ru/afisha/msk/festivali/oktyabr/',note:'Косплей, комиксы, игры — подросткам обычно очень нравится.'},
+ {title:'Парк «Зарядье» и Парящий мост',place:'Варварка, 6',when:'постоянно',price:'бесплатно',tag:'free',kids:true,link:'https://www.zaryadyepark.ru/',note:'Осенняя прогулка с видом на Кремль и реку.'},
+ {title:'Аптекарский огород',place:'пр-т Мира, 26',when:'осень',price:'платно',tag:'me',kids:true,link:'https://hortus.ru/',note:'Осенний сад и оранжереи — спокойная прогулка.'},
+ {title:'Экскурсия с фонарщиком Фаролеро',place:'центр Москвы',when:'вечерами',price:'платно',tag:'me',kids:true,link:'https://mag.russpass.ru/rubric/moskva-dlya-detej/kuda-skhodit-s-detmi-v-oktyabre-v-moskve',note:'Вечерняя прогулка с историями о старой Москве.'}
+];
+const DEF_TIMES=['08:30','09:25','10:30','11:35','12:30','13:25','14:20','15:15'];
+
+function blank(){return{me:'',kid:'',tasks:[],money:[],limits:{},tt:{times:DEF_TIMES.slice(),cells:{},sat:false},clubs:[],ideas:IDEAS.map((x,i)=>({...x,id:'p'+i,status:''})),theme:''}}
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))||blank()}catch(e){S=blank()}
+S={...blank(),...S};
+let pushTimer,online=true;
+function syncLabel(t,bad){const el=document.getElementById('sync');if(el){el.textContent=t;el.className='small '+(bad?'neg':'muted')}}
+async function api(action,data){
+  const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,data,initData:TG.initData})});
+  const j=await r.json();if(!j.ok)throw new Error(j.error+(j.id?' (ваш ID '+j.id+')':''));return j}
+function save(){S.updated=Date.now();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+  if(!REMOTE||!online)return;clearTimeout(pushTimer);syncLabel('· сохраняю…');
+  pushTimer=setTimeout(()=>api('save',S).then(()=>syncLabel('· ☁ сохранено')).catch(e=>syncLabel('· ⚠ не сохранилось: '+e.message,true)),800)}
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const iso=d=>{const z=new Date(d);z.setMinutes(z.getMinutes()-z.getTimezoneOffset());return z.toISOString().slice(0,10)};
+const TODAY=iso(new Date());
+const rub=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
+const uid=()=>Math.random().toString(36).slice(2,9);
+const kidName=()=>S.kid||'дочери';
+const dow=()=>{const d=new Date().getDay();return d===0?-1:d-1}; // 0=Пн
+
+// --- вкладки
+$('tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===b.dataset.tab));
+  try{sessionStorage.setItem('tab',b.dataset.tab)}catch(e){} render();};
+
+// --- ДЕЛА
+function taskLi(t,showDate){
+  const late=t.date&&t.date<TODAY&&!t.done;
+  return `<li class="${t.done?'done':''}"><input type="checkbox" data-tdone="${t.id}" ${t.done?'checked':''}>
+  <span class="grow t">${t.prio=='1'?'❗ ':''}${esc(t.title)}</span>
+  ${showDate&&t.date?`<span class="small ${late?'neg':'muted'}">${new Date(t.date).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</span>`:''}
+  <span class="tag ${t.cat==='Дочь'?'kid':''}">${esc(t.cat==='Дочь'&&S.kid?S.kid:t.cat)}</span>
+  <button class="x" data-tdel="${t.id}" title="Удалить">×</button></li>`}
+function addTask(title,date,cat,prio){if(!title.trim())return;S.tasks.push({id:uid(),title:title.trim(),date,cat,prio,done:false});save();render()}
+$('tAdd').onclick=()=>{addTask($('tTitle').value,$('tDate').value,$('tCat').value,$('tPrio').value);$('tTitle').value=''};
+$('tTitle').onkeydown=e=>{if(e.key==='Enter')$('tAdd').click()};
+$('quickTask').onkeydown=e=>{if(e.key==='Enter'){addTask(e.target.value,TODAY,'Я','0');e.target.value=''}};
+['tView','tViewDate','tFilterCat'].forEach(i=>$(i).onchange=render);
+$('moveOverdue').onclick=()=>{S.tasks.forEach(t=>{if(t.date&&t.date<TODAY&&!t.done)t.date=TODAY});save();render()};
+$('clearDone').onclick=()=>{S.tasks=S.tasks.filter(t=>!t.done);save();render()};
+document.addEventListener('click',e=>{
+  const d=e.target.dataset;
+  if(d.tdone){const t=S.tasks.find(x=>x.id===d.tdone);t.done=e.target.checked;save();render()}
+  if(d.tdel){S.tasks=S.tasks.filter(x=>x.id!==d.tdel);save();render()}
+  if(d.mdel){S.money=S.money.filter(x=>x.id!==d.mdel);save();render()}
+  if(d.cdel){S.clubs=S.clubs.filter(x=>x.id!==d.cdel);save();render()}
+  if(d.istat){const i=S.ideas.find(x=>x.id===d.id);i.status=i.status===d.istat?'':d.istat;save();render()}
+  if(d.idel){S.ideas=S.ideas.filter(x=>x.id!==d.idel);save();render()}
+  if(d.iplan){const i=S.ideas.find(x=>x.id===d.iplan);addTask('Сходить: '+i.title,'','Дочь','0');alert('Добавлено в «Дела» — поставьте дату.')}
+});
+function renderTasks(){
+  const v=$('tView').value,vd=$('tViewDate').value||TODAY,fc=$('tFilterCat').value;
+  const wk=iso(Date.now()+7*864e5);
+  let L=S.tasks.filter(t=>!fc||t.cat===fc);
+  if(v==='day')L=L.filter(t=>t.date===vd);
+  if(v==='week')L=L.filter(t=>t.date&&t.date>=TODAY&&t.date<=wk);
+  if(v==='overdue')L=L.filter(t=>t.date&&t.date<TODAY&&!t.done);
+  if(v==='all')L=L.filter(t=>!t.done);
+  if(v==='nodate')L=L.filter(t=>!t.date);
+  L.sort((a,b)=>(a.done-b.done)||(b.prio-a.prio)||String(a.date).localeCompare(b.date));
+  $('taskList').innerHTML=L.map(t=>taskLi(t,v!=='day')).join('')||'<li class="empty">Пусто. Добавьте дело сверху.</li>';
+  $('tViewDate').style.display=v==='day'?'':'none';
+}
+
+// --- БЮДЖЕТ
+function fillCats(){const c=$('bType').value==='inc'?INC_CATS:EXP_CATS;$('bCat').innerHTML=c.map(x=>`<option>${x}</option>`).join('')}
+$('bType').onchange=fillCats;
+$('bAdd').onclick=()=>{const sum=parseFloat($('bSum').value);if(!sum)return;
+  S.money.push({id:uid(),type:$('bType').value,sum,cat:$('bCat').value,note:$('bNote').value.trim(),date:$('bDate').value||TODAY});
+  $('bSum').value='';$('bNote').value='';save();render()};
+$('bSum').onkeydown=e=>{if(e.key==='Enter')$('bAdd').click()};
+$('bMonth').onchange=render;
+function monthData(m){const L=S.money.filter(x=>x.date.slice(0,7)===m);
+  const inc=L.filter(x=>x.type==='inc').reduce((a,x)=>a+x.sum,0), exp=L.filter(x=>x.type==='exp').reduce((a,x)=>a+x.sum,0);
+  const by={};L.filter(x=>x.type==='exp').forEach(x=>by[x.cat]=(by[x.cat]||0)+x.sum);return{L,inc,exp,by}}
+function summaryHtml(m){const d=monthData(m);return `<div class="stats">
+  <div class="stat"><div class="small muted">Доходы</div><div class="big pos">${rub(d.inc)}</div></div>
+  <div class="stat"><div class="small muted">Расходы</div><div class="big">${rub(d.exp)}</div></div>
+  <div class="stat"><div class="small muted">Остаток</div><div class="big ${d.inc-d.exp<0?'neg':''}">${rub(d.inc-d.exp)}</div></div></div>`}
+function catsHtml(m){const d=monthData(m);const cats=EXP_CATS.filter(c=>d.by[c]||S.limits[c]);
+  if(!cats.length)return '<div class="empty">Пока нет расходов в этом месяце.</div>';
+  return cats.map(c=>{const v=d.by[c]||0,l=+S.limits[c]||0,p=l?Math.min(100,v/l*100):100;
+    return `<div style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><span>${c}</span><span class="small ${l&&v>l?'neg':'muted'}">${rub(v)}${l?' из '+rub(l):''}</span></div>
+    <div class="bar"><i class="${l&&v>l?'over':''}" style="width:${l?p:Math.min(100,v/(d.exp||1)*100)}%"></i></div></div>`}).join('')}
+function renderBudget(){const m=$('bMonth').value;$('bSummary').innerHTML=summaryHtml(m);$('bCats').innerHTML=catsHtml(m);
+  const L=monthData(m).L.sort((a,b)=>b.date.localeCompare(a.date));
+  $('bList').innerHTML=L.map(x=>`<li><span class="small muted" style="width:52px">${new Date(x.date).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</span>
+   <span class="grow">${esc(x.cat)}${x.note?` <span class="muted small">— ${esc(x.note)}</span>`:''}</span>
+   <b class="${x.type==='inc'?'pos':''}">${x.type==='inc'?'+':'−'}${rub(x.sum)}</b><button class="x" data-mdel="${x.id}">×</button></li>`).join('')||'<li class="empty">Нет операций.</li>'}
+
+// --- УРОКИ
+function ttDays(){return S.tt.sat?DAYS:DAYS.slice(0,5)}
+function renderTT(){const dn=dow();
+  let h='<tr><th>#</th>'+ttDays().map((d,i)=>`<th>${d}</th>`).join('')+'</tr>';
+  S.tt.times.forEach((tm,r)=>{h+=`<tr><td class="num">${r+1}<br><input type="time" data-time="${r}" value="${tm}" style="width:84px;padding:2px"></td>`+
+    ttDays().map((d,c)=>`<td class="${c===dn?'today':''}"><input data-cell="${c}-${r}" value="${esc(S.tt.cells[c+'-'+r]||'')}" placeholder="—"></td>`).join('')+'</tr>'});
+  $('ttTable').innerHTML=h;$('ttSat').checked=S.tt.sat;
+  $('ttTitle').textContent='Расписание уроков'+(S.kid?' — '+S.kid:'');}
+$('ttTable').addEventListener('input',e=>{const d=e.target.dataset;
+  if(d.cell!==undefined){S.tt.cells[d.cell]=e.target.value;save()}
+  if(d.time!==undefined){S.tt.times[+d.time]=e.target.value;save()}});
+$('ttSat').onchange=e=>{S.tt.sat=e.target.checked;save();render()};
+$('cDay').innerHTML=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map((d,i)=>`<option value="${i}">${d}</option>`).join('');
+$('cAdd').onclick=()=>{const n=$('cName').value.trim();if(!n)return;S.clubs.push({id:uid(),name:n,day:+$('cDay').value,time:$('cTime').value,cost:+$('cCost').value||0});
+  $('cName').value='';$('cCost').value='';save();render()};
+$('sAdd').onclick=()=>{addTask($('sNote').value,$('sDate').value,'Дочь','1');$('sNote').value=''};
+function clubsFor(d){return S.clubs.filter(c=>c.day===d).sort((a,b)=>a.time.localeCompare(b.time))}
+function renderSchool(){renderTT();
+  const W=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];const cost=S.clubs.reduce((a,c)=>a+c.cost,0);
+  $('cList').innerHTML=S.clubs.slice().sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time)).map(c=>`<li><span class="tag kid">${W[c.day]} ${c.time||''}</span><span class="grow">${esc(c.name)}</span>${c.cost?`<span class="small muted">${rub(c.cost)}</span>`:''}<button class="x" data-cdel="${c.id}">×</button></li>`).join('')
+   +(S.clubs.length?`<li class="small muted">Кружки в месяц: <b>${rub(cost)}</b></li>`:'<li class="empty">Добавьте кружки — они появятся на экране «Сегодня».</li>');
+  const sch=S.tasks.filter(t=>t.cat==='Дочь'&&!t.done).sort((a,b)=>String(a.date).localeCompare(b.date));
+  $('sList').innerHTML=sch.map(t=>taskLi(t,true)).join('')||'<li class="empty">Ничего важного впереди.</li>'}
+
+// --- МОСКВА
+$('mFilter').onchange=render;
+$('mAdd').onclick=()=>{const t=$('mTitle').value.trim();if(!t)return;const tag=$('mTag').value;
+  S.ideas.unshift({id:uid(),title:t,place:$('mPlace').value,when:$('mWhen').value,price:$('mPrice').value||(tag==='free'?'бесплатно':''),tag,kids:tag!=='me',link:$('mLink').value,note:'',status:'',own:true});
+  ['mTitle','mPlace','mWhen','mPrice','mLink'].forEach(i=>$(i).value='');save();render()};
+function ideaCard(i){const lab={kids:['С ребёнком','kid'],free:['Бесплатно',''],me:['Для себя','warn']}[i.tag]||['',''];
+  return `<div class="card idea ${i.status==='been'?'been':''}"><h3>${esc(i.title)}</h3>
+  <div class="small muted">${esc(i.place)}${i.when?' · '+esc(i.when):''}${i.price?' · '+esc(i.price):''}</div>
+  ${i.note?`<p class="small" style="margin:6px 0">${esc(i.note)}</p>`:''}
+  <div class="row" style="margin-top:8px"><span class="tag ${lab[1]}">${lab[0]}</span>
+   ${i.link?`<a class="small" href="${esc(i.link)}" target="_blank" rel="noopener">подробнее</a>`:''}</div>
+  <div class="row" style="margin-top:8px">
+   <button class="btn ${i.status==='want'?'':'ghost'}" data-istat="want" data-id="${i.id}">★ Хочу</button>
+   <button class="btn ${i.status==='been'?'':'ghost'}" data-istat="been" data-id="${i.id}">✓ Были</button>
+   <button class="btn ghost" data-iplan="${i.id}">В дела</button>
+   <button class="x" data-idel="${i.id}" title="Удалить">×</button></div></div>`}
+function renderMoscow(){const f=$('mFilter').value;let L=S.ideas;
+  if(f==='kids')L=L.filter(i=>i.kids);if(f==='free')L=L.filter(i=>/бесплат/i.test(i.price));
+  if(f==='me')L=L.filter(i=>i.tag==='me');if(f==='want')L=L.filter(i=>i.status==='want');if(f==='been')L=L.filter(i=>i.status==='been');
+  $('mList').innerHTML=L.map(ideaCard).join('')||'<div class="empty">Ничего не найдено.</div>'}
+
+// --- СЕГОДНЯ
+function renderToday(){
+  const T=S.tasks.filter(t=>(t.date===TODAY)||(t.date&&t.date<TODAY&&!t.done)).sort((a,b)=>(a.done-b.done)||(b.prio-a.prio));
+  $('todayTasks').innerHTML=T.map(t=>taskLi(t,true)).join('')||'<li class="empty">На сегодня дел нет.</li>';
+  $('kidTodayTitle').textContent=(S.kid?S.kid+': ':'Дочь: ')+'уроки и кружки сегодня';
+  const d=dow();let h='';
+  if(d<0||(d===5&&!S.tt.sat))h='<div class="empty">Сегодня уроков нет — выходной.</div>';
+  else{const ls=S.tt.times.map((tm,r)=>({tm,s:S.tt.cells[d+'-'+r]})).filter(x=>x.s);
+    h=ls.length?'<ul class="list">'+ls.map(x=>`<li><span class="small muted" style="width:44px">${x.tm}</span><span class="grow">${esc(x.s)}</span></li>`).join('')+'</ul>'
+      :'<div class="empty">Расписание не заполнено — вкладка «Уроки».</div>';}
+  const cl=clubsFor(new Date().getDay()===0?6:new Date().getDay()-1);
+  if(cl.length)h+='<div style="margin-top:8px">'+cl.map(c=>`<span class="tag kid" style="margin-right:6px">${c.time} ${esc(c.name)}</span>`).join('')+'</div>';
+  $('todayLessons').innerHTML=h;
+  const m=TODAY.slice(0,7);$('todayBudget').innerHTML=summaryHtml(m)+'<div style="margin-top:12px">'+catsHtml(m)+'</div>';
+  const pool=S.ideas.filter(i=>i.status==='want').concat(S.ideas.filter(i=>i.kids&&i.status!=='been'));
+  const pick=pool[new Date().getDate()%Math.max(1,pool.length)];
+  $('todayIdea').innerHTML=pick?ideaCard(pick).replace('class="card idea','class="idea'):'<div class="empty">Добавьте идеи во вкладке «Москва».</div>';
+}
+
+// --- НАСТРОЙКИ
+$('sMe').oninput=e=>{S.me=e.target.value;save();head()};
+$('sKid').oninput=e=>{S.kid=e.target.value;save();head()};
+function renderLimits(){$('limits').innerHTML=EXP_CATS.map(c=>`<div class="row" style="margin-bottom:6px"><span class="grow small">${c}</span><input type="number" data-lim="${c}" value="${S.limits[c]||''}" placeholder="без лимита" style="width:120px"></div>`).join('')}
+$('limits').addEventListener('input',e=>{const c=e.target.dataset.lim;if(c){S.limits[c]=+e.target.value||0;save()}});
+$('exp').onclick=()=>{const b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='planer-kopiya-'+TODAY+'.json';a.click()};
+$('imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{S={...blank(),...JSON.parse(t)};save();head();render();alert('Копия загружена')}catch(er){alert('Файл не подошёл')}})};
+$('theme').onchange=e=>{S.theme=e.target.value;save();applyTheme()};
+function applyTheme(){const t=S.theme||(TG?TG.colorScheme:'');if(t)document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;$('theme').value=S.theme||''}
+// В Telegram внешние ссылки открываем через Telegram, а не внутри мини-приложения
+document.addEventListener('click',e=>{const a=e.target.closest('a[target=_blank]');if(a&&TG){e.preventDefault();TG.openLink(a.href)}});
+
+function head(){const h=new Date().getHours();const g=h<12?'Доброе утро':h<18?'Добрый день':'Добрый вечер';
+  $('hello').textContent=g+(S.me?', '+S.me:'')+'!';
+  $('todayLabel').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
+function render(){renderToday();renderTasks();renderBudget();renderSchool();renderMoscow()}
+
+// старт
+$('tDate').value=TODAY;$('tViewDate').value=TODAY;$('bDate').value=TODAY;$('bMonth').value=TODAY.slice(0,7);
+function boot(){$('sMe').value=S.me;$('sKid').value=S.kid;fillCats();renderLimits();applyTheme();head();render()}
+boot();
+if(TG){TG.ready();TG.expand()}
+if(REMOTE){syncLabel('· загружаю…');
+  api('load').then(j=>{if(j.data){S={...blank(),...j.data};try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}boot()}
+    else save(); // сервер пустой — отправляем то, что есть
+    syncLabel('· ☁ синхронизировано')})
+  .catch(e=>{online=false;syncLabel('· ⚠ нет связи с сервером: '+e.message+'. Изменения не сохранятся на сервер.',true)})}
+try{const t=sessionStorage.getItem('tab');if(t)document.querySelector(`nav button[data-tab="${t}"]`)?.click()}catch(e){}
+</script>
+</body>
+</html>

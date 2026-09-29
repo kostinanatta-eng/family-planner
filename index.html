@@ -140,7 +140,7 @@ a{color:var(--accent)}
       <div class="row">
         <select id="tView"><option value="week">Неделя по дням</option><option value="day">На выбранный день</option><option value="overdue">Просроченные</option><option value="all">Все невыполненные</option><option value="nodate">Без даты</option></select>
         <input type="date" id="tViewDate">
-        <select id="tFilterCat"><option value="">Все</option><option>Я</option><option>Дочь</option><option>Дом</option><option>Работа</option><option>Покупки</option><option>Notion</option></select>
+        <select id="tFilterCat"><option value="">Все</option><option>Я</option><option>Дочь</option><option>Дом</option><option>Работа</option><option>Покупки</option><option>Notion</option><option>Google</option></select>
       </div>
     </div>
     <ul class="list" id="taskList"></ul>
@@ -329,22 +329,24 @@ document.addEventListener('click',e=>{
   if(d.iplan){const i=S.ideas.find(x=>x.id===d.iplan);addTask('Сходить: '+i.title,'','Дочь','0');alert('Добавлено в «Дела» — поставьте дату.')}
 });
 // Дела из Notion to do List (приходят с сервера), галочка уходит обратно в Notion
-const notionTodo=()=>((EXT&&EXT.todo)||[]).map(t=>({...t,cat:'Notion',notion:true}));
+// Дела из Notion to do List и Google Задач (приходят с сервера); галочка уходит обратно в источник
+const EXT_CATS=['Notion','Google'];
+const notionTodo=()=>((EXT&&EXT.todo)||[]).map(t=>({...t,cat:'Notion',notion:true})).concat(((EXT&&EXT.gtasks)||[]).map(t=>({...t,cat:'Google',notion:true})));
 function notionLi(t,showDate){
   const late=t.date&&t.date<TODAY&&!t.done;
   return `<li class="${t.done?'done':''}"><input type="checkbox" data-ncheck="${esc(t.id)}" ${t.done?'checked':''} ${t.kind?'':'disabled'}>
   <span class="grow t">${esc(t.title)}</span>
   ${showDate&&t.date?`<span class="small ${late?'neg':'muted'}">${new Date(t.date).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})}</span>`:''}
-  <a class="tag warn" href="${esc(t.url||'#')}" target="_blank" rel="noopener" style="text-decoration:none">Notion</a></li>`}
+  <a class="tag ${t.cat==='Google'?'':'warn'}" href="${esc(t.url||'#')}" target="_blank" rel="noopener" style="text-decoration:none" title="${esc(t.src||'')}">${t.cat}</a></li>`}
 const anyLi=(t,sd)=>t.notion?notionLi(t,sd):taskLi(t,sd);
 document.addEventListener('change',e=>{const id=e.target.dataset.ncheck;if(!id)return;
-  const t=EXT.todo.find(x=>x.id===id);const was=t.done;t.done=e.target.checked;render();
+  const t=[...(EXT.todo||[]),...(EXT.gtasks||[])].find(x=>x.id===id);const was=t.done;t.done=e.target.checked;render();
   api('notionCheck',{id:t.id,kind:t.kind,prop:t.prop,checked:t.done})
    .catch(er=>{t.done=was;render();(TG?TG.showAlert.bind(TG):alert)('Не получилось отметить в Notion: '+er.message)})});
 const byOrder=(a,b)=>(a.done-b.done)||((b.prio||0)-(a.prio||0))||String(a.date).localeCompare(b.date);
 function renderTasks(){
   const v=$('tView').value,vd=$('tViewDate').value||TODAY,fc=$('tFilterCat').value;
-  let L=(fc==='Notion'?[]:S.tasks.filter(t=>!fc||t.cat===fc)).concat(!fc||fc==='Notion'?notionTodo():[]);
+  let L=(EXT_CATS.includes(fc)?[]:S.tasks.filter(t=>!fc||t.cat===fc)).concat(notionTodo().filter(t=>!fc||t.cat===fc));
   $('tViewDate').style.display=v==='day'?'':'none';
   if(v==='week'){ // текущая неделя Пн–Вс
     const dn=new Date().getDay(),mon=Date.now()-((dn+6)%7)*864e5;let h='';
@@ -352,7 +354,7 @@ function renderTasks(){
       h+=`<li style="display:block;border:0;padding:12px 0 2px"><b class="${d===TODAY?'':'muted'}">${d===TODAY?'Сегодня, ':''}${new Date(d+'T12:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}</b></li>`+
         (D.map(t=>anyLi(t,false)).join('')||'<li class="empty small">—</li>')}
     const nd=L.filter(t=>t.notion&&!t.date).sort(byOrder);
-    if(nd.length)h+='<li style="display:block;border:0;padding:12px 0 2px"><b class="muted">Notion: без дня</b></li>'+nd.map(t=>anyLi(t,false)).join('');
+    if(nd.length)h+='<li style="display:block;border:0;padding:12px 0 2px"><b class="muted">Notion и Google: без даты</b></li>'+nd.map(t=>anyLi(t,false)).join('');
     $('taskList').innerHTML=h;return}
   if(v==='day')L=L.filter(t=>t.date===vd);
   if(v==='overdue')L=L.filter(t=>t.date&&t.date<TODAY&&!t.done);
@@ -458,7 +460,7 @@ function renderToday(){
 
   // Дела: свои + Notion to do на этот день (сегодня — ещё и просроченные свои)
   const T=S.tasks.filter(t=>t.date===d||(isT&&t.date&&t.date<TODAY&&!t.done))
-    .concat(notionTodo().filter(t=>t.date===d)).sort(byOrder);
+    .concat(notionTodo().filter(t=>t.date===d||(isT&&t.cat==='Google'&&t.date&&t.date<TODAY&&!t.done))).sort(byOrder);
   $('dTasksTitle').textContent=isT?'Дела на сегодня':'Дела на этот день';
   $('todayTasks').innerHTML=T.map(t=>anyLi(t,isT)).join('')||'<li class="empty">Дел нет.</li>';
 

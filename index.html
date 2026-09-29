@@ -425,6 +425,7 @@ boot();
 if(TG){TG.ready();TG.expand()}
 if(REMOTE){syncLabel('· загружаю…');
   api('load').then(j=>{
+    if(j.data&&(S.updated||0)>(j.data.updated||0)){save();syncLabel('· ☁ отправляю свежие изменения…');return} // на телефоне новее — не затираем
     if(j.data){S={...blank(),...j.data};try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
       try{boot()}catch(e){console.error(e)}} // ошибка отрисовки не должна отключать сохранение
     else save(); // сервер пустой — отправляем то, что есть
